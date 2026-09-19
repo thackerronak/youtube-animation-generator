@@ -1,7 +1,13 @@
+import {Jimp} from 'jimp';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {createCloudflareImageGenerator} from './cloudflare-image.js';
 import {createDefaultImageGenerator} from '../scene-backgrounds.js';
 import {createDefaultVisualValidator} from '../generated-visuals.js';
+
+const solidPng = async (color: number): Promise<Buffer> => {
+  const image = new Jimp({width: 8, height: 8, color});
+  return image.getBuffer('image/png');
+};
 
 describe('createDefaultImageGenerator routing', () => {
   afterEach(() => {
@@ -134,5 +140,62 @@ describe('createCloudflareImageGenerator', () => {
     expect(init.headers['Authorization']).toBe('Bearer cf-key-123');
     const parsedBody = JSON.parse(init.body);
     expect(parsedBody.prompt).toBe('Test prompt');
+  });
+
+  it('retries and eventually throws when Cloudflare keeps returning a blank safety-filter placeholder', async () => {
+    vi.stubEnv('CLOUDFLARE_AI_KEY', 'cf-key-123');
+    vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'cf-acc-456');
+
+    const blackPng = await solidPng(0x000000ff);
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({'content-type': 'image/png'}),
+      arrayBuffer: async () => blackPng.buffer.slice(
+        blackPng.byteOffset,
+        blackPng.byteOffset + blackPng.byteLength,
+      ),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void) => {
+      callback();
+      return 0 as unknown as NodeJS.Timeout;
+    }) as typeof setTimeout);
+
+    const generator = createCloudflareImageGenerator();
+    await expect(generator({
+      model: '@cf/stabilityai/stable-diffusion-xl-base-1.0',
+      prompt: 'A calm abstract background',
+      quality: 'medium',
+      size: '1152x2048',
+    })).rejects.toThrow('blocked by');
+
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('accepts a non-blank image without retrying', async () => {
+    vi.stubEnv('CLOUDFLARE_AI_KEY', 'cf-key-123');
+    vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'cf-acc-456');
+
+    const violetPng = await solidPng(0x6d28d9ff);
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({'content-type': 'image/png'}),
+      arrayBuffer: async () => violetPng.buffer.slice(
+        violetPng.byteOffset,
+        violetPng.byteOffset + violetPng.byteLength,
+      ),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const generator = createCloudflareImageGenerator();
+    const result = await generator({
+      model: '@cf/stabilityai/stable-diffusion-xl-base-1.0',
+      prompt: 'A calm abstract background',
+      quality: 'medium',
+      size: '1152x2048',
+    });
+
+    expect(result).toEqual(violetPng);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

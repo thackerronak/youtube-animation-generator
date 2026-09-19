@@ -1,3 +1,4 @@
+import {Jimp} from 'jimp';
 import {withTransientImageRetries, type GenerateSceneImage} from '../scene-backgrounds.js';
 
 // Workers AI models do not share a parameter set, and sending the wrong one is
@@ -42,6 +43,50 @@ export const cloudflareDimensions = (
 };
 
 const isSdxlFamily = (model: string): boolean => model.includes('stable-diffusion');
+
+/**
+ * SDXL's built-in safety checker can trip on an inoffensive prompt and, instead
+ * of an error, Workers AI responds 200 with a fixed near-black placeholder
+ * image (same bytes every time). withTransientImageRetries only guards against
+ * an empty body, so that placeholder sails through as a "successful"
+ * generation. This flags a near-black AND near-uniform image so the caller can
+ * retry instead - no seed is sent, so a retry is not guaranteed to repeat the
+ * block.
+ */
+const BLOCKED_IMAGE_MAX_MEAN_LUMINANCE = 10;
+const BLOCKED_IMAGE_MAX_LUMINANCE_STD_DEV = 4;
+
+const looksLikeBlockedPlaceholder = async (bytes: Buffer): Promise<boolean> => {
+  let image;
+  try {
+    image = await Jimp.read(bytes);
+  } catch {
+    // Can't decode it here; let the caller's own validation (if any) decide.
+    return false;
+  }
+  const {data, height, width} = image.bitmap;
+  const totalPixels = width * height;
+  if (!totalPixels) return false;
+  const sampleStride = Math.max(1, Math.floor(totalPixels / 4_096));
+
+  let sum = 0;
+  let sumSquares = 0;
+  let sampled = 0;
+  for (let pixel = 0; pixel < totalPixels; pixel += sampleStride) {
+    const offset = pixel * 4;
+    const luminance = (data[offset] ?? 0) * 0.299
+      + (data[offset + 1] ?? 0) * 0.587
+      + (data[offset + 2] ?? 0) * 0.114;
+    sum += luminance;
+    sumSquares += luminance * luminance;
+    sampled += 1;
+  }
+  if (!sampled) return false;
+  const mean = sum / sampled;
+  const variance = Math.max(0, sumSquares / sampled - mean * mean);
+  return mean < BLOCKED_IMAGE_MAX_MEAN_LUMINANCE
+    && Math.sqrt(variance) < BLOCKED_IMAGE_MAX_LUMINANCE_STD_DEV;
+};
 
 /** Exported for tests: the exact body we post for a given model. */
 export const cloudflareImageBody = ({
@@ -104,26 +149,39 @@ export const createCloudflareImageGenerator = (): GenerateSceneImage => {
       }
 
       // SDXL-family models stream the image; flux returns base64 inside JSON.
+      let bytes: Buffer;
       if (!(response.headers.get('content-type') ?? '').includes('application/json')) {
-        const binary = Buffer.from(await response.arrayBuffer());
-        if (!binary.length) {
+        bytes = Buffer.from(await response.arrayBuffer());
+        if (!bytes.length) {
           throw new Error('Cloudflare image generation returned an empty image stream.');
         }
-        return binary;
+      } else {
+        const data = await response.json() as {
+          result?: {image?: string};
+          success?: boolean;
+          errors?: Array<{message?: string}>;
+        };
+
+        if (!data.result?.image) {
+          const message = data.errors?.[0]?.message ?? 'No image data returned';
+          throw new Error(`Cloudflare image generation returned no image: ${message}`);
+        }
+
+        bytes = Buffer.from(data.result.image, 'base64');
       }
 
-      const data = await response.json() as {
-        result?: {image?: string};
-        success?: boolean;
-        errors?: Array<{message?: string}>;
-      };
-
-      if (!data.result?.image) {
-        const message = data.errors?.[0]?.message ?? 'No image data returned';
-        throw new Error(`Cloudflare image generation returned no image: ${message}`);
+      if (await looksLikeBlockedPlaceholder(bytes)) {
+        const error = new Error(
+          'Cloudflare image generation returned a blank placeholder image, likely blocked by '
+          + "the model's safety filter.",
+        );
+        // Marked transient so withTransientImageRetries retries it - no seed is
+        // sent, so a retry is not the same request.
+        Object.assign(error, {status: 503});
+        throw error;
       }
 
-      return Buffer.from(data.result.image, 'base64');
+      return bytes;
     },
   );
 };
