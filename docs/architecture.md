@@ -111,6 +111,10 @@ src/
   icon-catalog.ts         Lucide + Simple Icons resolution
   technology-catalog.ts   Brand mark resolution
   local-images.ts         External image ingestion
+  image-background.ts     --background-image validation, staging, and (for PNG/JPEG)
+                           the render-time palette override applied from it
+  image-palette.ts        Average-color sampling + nearest-palette matching for
+                           image-background.ts; WebP is skipped (see troubleshooting.md)
   visual-palettes.ts      Palette enum and colour tokens
 
   remotion/               React components — the actual visuals
@@ -243,4 +247,4 @@ lower half of the frame, which is exactly where the default treatment was darkes
 
 ## Scale
 
-~27,900 lines across 85 source modules and 43 test files, 508 tests, full suite ≈ 1.5 s.
+~28,100 lines across 86 source modules and 44 test files, 523 tests, full suite ≈ 1.5 s.
