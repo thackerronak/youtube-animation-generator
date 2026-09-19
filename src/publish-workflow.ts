@@ -67,6 +67,16 @@ const loadPublishPlan = async (filePath: string): Promise<NarratedPublishPlan> =
   return parsed.data;
 };
 
+/** Mirrors applyImageBackgroundPalette for the publish plan's differently-shaped accent field. */
+export const applyImageBackgroundAccent = (
+  publish: NarratedPublishPlan,
+  imageBackground: ImageBackground | undefined,
+): NarratedPublishPlan => (
+  imageBackground?.suggestedPalette && imageBackground.suggestedPalette !== publish.thumbnail.accent
+    ? {...publish, thumbnail: {...publish.thumbnail, accent: imageBackground.suggestedPalette}}
+    : publish
+);
+
 const selectedScene = (
   plan: NarratedPlan,
   publish: NarratedPublishPlan,
@@ -140,6 +150,7 @@ export const runPublishWorkflow = async (
     if (options.metadataOnly) return;
   }
 
+  publish = applyImageBackgroundAccent(publish, options.imageBackground);
   const scene = selectedScene(narration, publish);
   const outputs = await renderPublishCovers({
     aspectRatio: options.aspectRatio,

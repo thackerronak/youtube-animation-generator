@@ -1,12 +1,20 @@
 import {access, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {relative, resolve} from 'node:path';
+import {Jimp} from 'jimp';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {bundle} from '@remotion/bundler';
 import {renderStill, selectComposition} from '@remotion/renderer';
 import {runCli} from './cli.js';
 import {generateNarratedPublishPlan} from './publish.js';
 import {narratedPublishPlanSchema, publishCoverInputSchema} from './types.js';
+import {VIDEO_PALETTES} from './visual-palettes.js';
+
+const solidColorPng = async (hex: string): Promise<Buffer> => {
+  const color = Number.parseInt(`${hex.replace(/^#/u, '')}ff`, 16);
+  const image = new Jimp({color, height: 8, width: 8});
+  return image.getBuffer('image/png');
+};
 
 vi.mock('@remotion/bundler', () => ({bundle: vi.fn()}));
 vi.mock('@remotion/renderer', () => ({renderStill: vi.fn(), selectComposition: vi.fn()}));
@@ -131,6 +139,16 @@ describe('publish image backgrounds', () => {
     await expect(runCli(['publish', planPath, '--render-publish', publishPath, '--background-image', imagePath]))
       .rejects.toThrow('Image decoding failed');
     await expect(access(vi.mocked(bundle).mock.calls[0]![0].publicDir!)).rejects.toThrow();
+  });
+
+  it('overrides the saved thumbnail accent using a decodable background image', async () => {
+    const {planPath, publishPath, imagePath} = await setup();
+    await writeFile(imagePath, await solidColorPng(VIDEO_PALETTES.violet.accents.primary));
+    await runCli(['publish', planPath, '--render-publish', publishPath, '--background-image', imagePath]);
+    for (const [options] of vi.mocked(renderStill).mock.calls) {
+      const input = publishCoverInputSchema.parse(options.inputProps);
+      expect(input.publish.thumbnail.accent).toBe('violet');
+    }
   });
 
   it('keeps legacy props and the palette backdrop when no image is supplied', async () => {
