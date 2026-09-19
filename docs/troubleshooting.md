@@ -29,6 +29,7 @@
 | `--review` never pauses | stdin is not a TTY (CI, piped output) | By design. Run it in an interactive terminal |
 | Stills regenerate without `--force` | Stills deliberately bypass the overwrite preflight | Expected, so the preview loop stays fast |
 | Missing generated image on a timed plan | Cache miss | CLI names the scene and requires explicit `--generated-visuals auto` (**billed**) rather than substituting art |
+| `--background-image` doesn't shift the accent palette | Image is WebP, near-grayscale, or undecodable | Expected for WebP: `@jimp/wasm-webp`'s WASM loader calls `fetch()` on a `file:` URL, which Node's `fetch` rejects, so palette sampling only supports PNG/JPEG (`image-palette.ts`). Use a PNG/JPEG background to get palette matching. |
 
 ---
 

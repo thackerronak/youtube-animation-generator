@@ -1,11 +1,18 @@
 import {mkdir, mkdtemp, readFile, readdir, rm, truncate, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {relative, resolve} from 'node:path';
+import {Jimp} from 'jimp';
 import {afterEach, describe, expect, it} from 'vitest';
-import {stageImageBackground, validateImageBackground} from './image-background.js';
+import {applyImageBackgroundPalette, stageImageBackground, validateImageBackground} from './image-background.js';
+import {VIDEO_PALETTES} from './visual-palettes.js';
 
 const directories: string[] = [];
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0mQAAAAASUVORK5CYII=', 'base64');
+const solidColorPng = async (hex: string): Promise<Buffer> => {
+  const color = Number.parseInt(`${hex.replace(/^#/u, '')}ff`, 16);
+  const image = new Jimp({color, height: 8, width: 8});
+  return image.getBuffer('image/png');
+};
 const directory = async () => {
   const path = await mkdtemp(resolve(tmpdir(), 'image-background-'));
   directories.push(path);
@@ -65,5 +72,49 @@ describe('custom image backgrounds', () => {
     await expect(stageImageBackground(image, dir)).rejects.toThrow('changed after validation');
     await expect(stageImageBackground(undefined, dir)).rejects.toThrow('requires --background-image');
     expect(await readdir(dir)).toEqual(['image.png']);
+  });
+
+  it('attaches a suggested palette derived from a decodable image', async () => {
+    const dir = await directory();
+    const file = resolve(dir, 'violet.png');
+    await writeFile(file, await solidColorPng(VIDEO_PALETTES.violet.accents.primary));
+    const image = await validateImageBackground(file);
+    expect(image.suggestedPalette).toBe('violet');
+  });
+
+  it('omits a suggested palette for images a full decoder can\'t resolve a hue from', async () => {
+    const dir = await directory();
+    const file = resolve(dir, 'minimal.png');
+    await writeFile(file, png);
+    const image = await validateImageBackground(file);
+    expect(image.suggestedPalette).toBeUndefined();
+  });
+});
+
+describe('applyImageBackgroundPalette', () => {
+  it('overrides the plan palette with the image-suggested one', () => {
+    const plan = {palette: 'cyan' as const, title: 'Sample'};
+    const overridden = applyImageBackgroundPalette(plan, {
+      filePath: '/tmp/example.png',
+      sha256: 'abc',
+      suggestedPalette: 'rose',
+    });
+    expect(overridden).toEqual({palette: 'rose', title: 'Sample'});
+    expect(overridden).not.toBe(plan);
+  });
+
+  it('leaves the plan untouched when there is no image background or no suggestion', () => {
+    const plan = {palette: 'cyan' as const, title: 'Sample'};
+    expect(applyImageBackgroundPalette(plan, undefined)).toBe(plan);
+    expect(applyImageBackgroundPalette(plan, {filePath: '/tmp/example.png', sha256: 'abc'})).toBe(plan);
+  });
+
+  it('leaves the plan untouched when the suggestion matches the existing palette', () => {
+    const plan = {palette: 'rose' as const, title: 'Sample'};
+    expect(applyImageBackgroundPalette(plan, {
+      filePath: '/tmp/example.png',
+      sha256: 'abc',
+      suggestedPalette: 'rose',
+    })).toBe(plan);
   });
 });

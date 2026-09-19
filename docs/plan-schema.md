@@ -111,7 +111,7 @@ Using a minimal one-scene plan:
 | Field | Controls |
 |---|---|
 | `title` | Opening title card |
-| `palette` | Colour scheme for the whole video |
+| `palette` | Colour scheme for the whole video — overridden at render time when `--background-image` supplies a PNG/JPEG with a clear dominant hue (`image-background.ts:applyImageBackgroundPalette`, color sampling in `image-palette.ts`); the saved plan JSON itself is never rewritten |
 | `scenes[].template` | Layout family — `process-flow` draws connected left-to-right nodes |
 | `scenes[].title` | Scene heading |
 | `scenes[].primaryItems` | The labels drawn on screen (one node each) |

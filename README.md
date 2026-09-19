@@ -414,6 +414,8 @@ pnpm run animations --render-plan summary-video/summary.narration-timed.json --b
 
 Custom image backgrounds use no image-generation API and are validated before planning or synthesis. Rendering copies the unchanged bytes once to temporary assets and checks that the image has not changed since validation. This is a render-time option: repeat it when rendering a saved plan; `--plan-only` validates the image without copying it or saving the selection. Explicit ambient/generated/off modes and `--regenerate-backgrounds` cannot be combined with `--background-image`. The same option also supports publish thumbnails and vertical covers, as described below.
 
+For a PNG or JPEG background image, validation also samples the image's average color locally (no network call, no API key) and, when it has a clear dominant hue, overrides the plan's accent palette with whichever of the five fixed palettes (`cyan`, `violet`, `emerald`, `amber`, `rose`) is nearest — so captions' diagrams, icons, character accents, chroma-key colors, and thumbnail/cover art match the image's theme instead of the palette the planner picked from your source text. The background image itself is never recolored. This override is render-time only, exactly like `--background-image`, and is skipped (falling back to the source-text palette) for WebP images, near-grayscale images, and images a decoder can't parse.
+
 Create only the script and draft storyboard—including editable subtitle phrases, chart evidence, generated foreground directions, and scene background prompts. Selected local images are copied for deterministic rerenders, but no voice or generated image assets are purchased in this step:
 
 ```bash

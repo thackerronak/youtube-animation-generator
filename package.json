@@ -34,6 +34,7 @@
     "@remotion/layout-utils": "4.0.515",
     "@remotion/lottie": "4.0.515",
     "@remotion/renderer": "4.0.515",
+    "jimp": "^1.6.1",
     "lottie-web": "5.13.0",
     "lucide-react": "1.28.0",
     "onnxruntime-node": "1.27.0",

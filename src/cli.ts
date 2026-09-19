@@ -68,7 +68,7 @@ import {
   type SupertonicVoiceChoice,
 } from './supertonic/protocol.js';
 import {selectSupertonicVoice} from './supertonic/voice-selection.js';
-import {validateImageBackground, type ImageBackground} from './image-background.js';
+import {applyImageBackgroundPalette, validateImageBackground, type ImageBackground} from './image-background.js';
 import {authorTopicDocument, countWords, topicFileName} from './topic-author.js';
 
 const VERSION = '0.9.0';
@@ -549,6 +549,7 @@ const runSubtitleWorkflow = async ({
     });
     plan.planningWarnings = [...code.warnings, ...(plan.planningWarnings ?? [])];
   }
+  plan = applyImageBackgroundPalette(plan, visual.imageBackground);
 
   const stem = fileStem(plan.sourceSubtitle);
   const outputDirectory = common.outputDirectory ?? resolve(dirname(plan.sourceSubtitle), 'animations');
@@ -762,14 +763,14 @@ const runNarratedWorkflow = async ({
       }
       await renderTimedNarration({
         common: {...common, outputDirectory},
-        plan: loaded.plan,
+        plan: applyImageBackgroundPalette(loaded.plan, visual.imageBackground),
         planDirectory: dirname(planPath),
         stem,
         visual,
       });
       return;
     }
-    draft = loaded.plan;
+    draft = applyImageBackgroundPalette(loaded.plan, visual.imageBackground);
     if (common.planOnly) {
       console.log('Draft narrated plan is valid; --plan-only skipped synthesis.');
       return;
@@ -882,6 +883,7 @@ const runNarratedWorkflow = async ({
       sourceText: planningSourceText,
       targetDurationSeconds,
     });
+    draft = applyImageBackgroundPalette(draft, visual.imageBackground);
     draft.planningWarnings = [...code.warnings, ...(draft.planningWarnings ?? [])];
     await stageSelectedLocalImages({
       catalog: localImages,
@@ -911,7 +913,7 @@ const runNarratedWorkflow = async ({
       await promptReview('Stage 1 Approved. Proceed to generate scene screenshots?');
       const reloaded = await loadPlan(draftPath);
       if (reloaded.kind === 'narrated' && reloaded.plan.stage === 'draft') {
-        draft = reloaded.plan;
+        draft = applyImageBackgroundPalette(reloaded.plan, visual.imageBackground);
       }
     }
   }
@@ -980,7 +982,7 @@ const runNarratedWorkflow = async ({
     const planFileToReload = planPath ?? resolve(outputDirectory, `${stem}.narration-plan.json`);
     const reloaded = await loadPlan(planFileToReload);
     if (reloaded.kind === 'narrated' && reloaded.plan.stage === 'draft') {
-      draft = reloaded.plan;
+      draft = applyImageBackgroundPalette(reloaded.plan, visual.imageBackground);
     }
   }
 
